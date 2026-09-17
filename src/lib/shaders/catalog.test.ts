@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CATALOG, getCatalog, rarityCounts } from "./catalog.ts";
 import { generateCopyText } from "./copy-code.ts";
+import { fragmentSource, GLOW_FLOOR } from "./glsl.ts";
 import { capPixelRatio } from "./rng.ts";
 import {
   CATALOG_SIZE,
@@ -11,8 +12,16 @@ import {
   MAX_CONTEXTS,
   MAX_DIMENSION,
   MAX_PIXEL_RATIO,
+  type EffectType,
 } from "./types.ts";
 import { CARD_MAX_DPR, HERO_MAX_DPR } from "./types.ts";
+import { wgslSource } from "./wgsl.ts";
+
+function ofType(type: EffectType) {
+  const hit = CATALOG.find((s) => s.type === type);
+  assert.ok(hit, type);
+  return hit!;
+}
 
 describe("catalog", () => {
   it("AC-CAT-01 length is 2240", () => {
@@ -107,5 +116,70 @@ describe("hidpi caps", () => {
   });
   it("AC-GL-02 context pool is 10", () => {
     assert.equal(MAX_CONTEXTS, 10);
+  });
+});
+
+describe("shader variants", () => {
+  it("glow floor is 0.42 in both languages", () => {
+    assert.equal(GLOW_FLOOR, 0.42);
+    const glsl = fragmentSource("pure");
+    const wgsl = wgslSource(ofType("pure"));
+    assert.match(glsl, /mix\(0\.42, 1\.0, g\)/);
+    assert.match(wgsl, /mix\(0\.42, 1\.0, g\)/);
+  });
+
+  it("pure program omits Bayer / ASCII / mosaic", () => {
+    const src = fragmentSource("pure");
+    assert.doesNotMatch(src, /bayer4/);
+    assert.doesNotMatch(src, /glyph/);
+    assert.doesNotMatch(src, /float cell/);
+  });
+
+  it("nine programs specialize post-process", () => {
+    assert.match(fragmentSource("grain"), /hash21\(frag \+ floor\(t \* 24\.0\)\)/);
+    assert.match(fragmentSource("ascii"), /glyph/);
+    assert.match(fragmentSource("dither"), /bayer4/);
+    assert.match(fragmentSource("halftone"), /smoothstep\(r, r - 0\.04/);
+    assert.match(fragmentSource("sparkle"), /0\.984/);
+    assert.match(fragmentSource("liquid"), /0\.22 \* vec2/);
+    assert.match(fragmentSource("mosaic"), /float cell/);
+    assert.match(fragmentSource("chroma"), /vec3\(r\.r, col\.g, b\.b\)/);
+    assert.doesNotMatch(fragmentSource("liquid"), /bayer4/);
+    assert.doesNotMatch(fragmentSource("dither"), /glyph/);
+  });
+
+  it("WGSL copy matches GLSL post-process for mosaic / ASCII / Bayer", () => {
+    const ascii = wgslSource(ofType("ascii"));
+    const dither = wgslSource(ofType("dither"));
+    const mosaic = wgslSource(ofType("mosaic"));
+    const grain = wgslSource(ofType("grain"));
+    const sparkle = wgslSource(ofType("sparkle"));
+    const chroma = wgslSource(ofType("chroma"));
+    const liquid = wgslSource(ofType("liquid"));
+    const halftone = wgslSource(ofType("halftone"));
+
+    assert.match(ascii, /glyph/);
+    assert.match(ascii, /vec2<f32>\(7\.0, 11\.0\)/);
+    assert.match(dither, /fn bayer4/);
+    assert.match(dither, /levels = 5\.0/);
+    assert.match(mosaic, /let cell = mix\(8\.0, 28\.0, 0\.55\)/);
+    assert.match(grain, /0\.12/);
+    assert.match(sparkle, /6\.0 \* max\(u\.pixelRatio, 1\.0\)/);
+    assert.match(chroma, /3\.2, 0\.0/);
+    assert.match(liquid, /0\.22 \* vec2/);
+    assert.match(halftone, /rotMul\(0\.4/);
+    assert.match(ascii, /WARP_FREQ_X \* 0\.37/);
+    assert.match(dither, /applyEffect/);
+  });
+
+  it("copied WebGPU modules are specialized per type", () => {
+    const gpu = (t: EffectType) => generateCopyText(ofType(t), "webgpu");
+    assert.match(gpu("ascii"), /glyph/);
+    assert.doesNotMatch(gpu("ascii"), /fn bayer4/);
+    assert.match(gpu("dither"), /fn bayer4/);
+    assert.doesNotMatch(gpu("dither"), /glyph/);
+    assert.match(gpu("mosaic"), /let cell = mix\(8\.0, 28\.0, 0\.55\)/);
+    assert.match(gpu("pure"), /@fragment/);
+    assert.doesNotMatch(gpu("pure"), /fn bayer4/);
   });
 });

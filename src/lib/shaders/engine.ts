@@ -1,9 +1,8 @@
-import { FRAGMENT_SRC, VERTEX_SRC } from "./glsl.ts";
+import { fragmentSource, VERTEX_SRC } from "./glsl.ts";
 import { capDimension, capPixelRatio } from "./rng.ts";
 import {
   CARD_MAX_DIMENSION,
   CARD_MAX_DPR,
-  EFFECT_INDEX,
   HERO_MAX_DIMENSION,
   HERO_MAX_DPR,
   MAX_CONTEXTS,
@@ -58,7 +57,6 @@ const UNIFORM_KEYS = [
   "WARP_AMP_Y",
   "ASPECT_X",
   "ASPECT_Y",
-  "EFFECT",
 ] as const;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {
@@ -74,9 +72,9 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   return sh;
 }
 
-function link(gl: WebGL2RenderingContext) {
+function link(gl: WebGL2RenderingContext, fragmentSrc: string) {
   const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SRC);
-  const fs = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SRC);
+  const fs = compile(gl, gl.FRAGMENT_SHADER, fragmentSrc);
   const prog = gl.createProgram();
   if (!prog) throw new Error("program alloc failed");
   gl.attachShader(prog, vs);
@@ -162,7 +160,6 @@ function draw(live: Live, now: number) {
   set1("WARP_AMP_Y", p.warpAmpY);
   set1("ASPECT_X", p.aspectX);
   set1("ASPECT_Y", p.aspectY);
-  set1("EFFECT", EFFECT_INDEX[live.record.type]);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -233,7 +230,7 @@ export function mountShader(
     powerPreference: "low-power",
   });
   if (!gl) throw new Error("WebGL2 unavailable");
-  const program = link(gl);
+  const program = link(gl, fragmentSource(record.type));
   const loc: Record<string, WebGLUniformLocation | null> = {};
   for (const k of UNIFORM_KEYS) loc[k] = gl.getUniformLocation(program, k);
 
