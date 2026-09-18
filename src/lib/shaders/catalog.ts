@@ -212,9 +212,22 @@ export function getCatalog(): ShaderRecord[] {
   return CATALOG;
 }
 
-export function filterCatalog(rarity: "all" | EffectType): ShaderRecord[] {
-  if (rarity === "all") return CATALOG;
-  return CATALOG.filter((s) => s.type === rarity);
+export function filterCatalog(
+  rarity: "all" | EffectType,
+  q = "",
+): ShaderRecord[] {
+  const base = rarity === "all" ? CATALOG : CATALOG.filter((s) => s.type === rarity);
+  const needle = q.trim().toLowerCase();
+  if (!needle) return base;
+  const stripped = needle.startsWith("@") || needle.startsWith("#") ? needle.slice(1) : needle;
+  const idDigits = stripped.replaceAll(",", "");
+  const asId = Number(idDigits);
+  const wantId = /^[0-9]+$/.test(idDigits) && Number.isFinite(asId);
+  return base.filter((s) => {
+    if (s.handle.toLowerCase().includes(stripped)) return true;
+    if (wantId && (s.id === asId || String(s.id).includes(idDigits))) return true;
+    return false;
+  });
 }
 
 export function findShader(id: number): ShaderRecord | undefined {

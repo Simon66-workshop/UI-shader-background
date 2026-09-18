@@ -14,6 +14,7 @@ export {
   MAX_CONTEXTS,
   MAX_DIMENSION,
   MAX_PIXEL_RATIO,
+  THEME_FADE_MS,
   type CopyFormat,
   type EffectType,
   type ShaderRecord,

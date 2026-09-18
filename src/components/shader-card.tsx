@@ -8,7 +8,7 @@ export function ShaderCard({
   search,
 }: {
   record: ShaderRecord;
-  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined };
+  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined; q: string };
 }) {
   return (
     <article className="group relative aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-bg-subtle">
@@ -19,18 +19,20 @@ export function ShaderCard({
         aria-label={`Open @${record.handle}`}
       >
         <ShaderCanvas record={record} mode="card" />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="text-xl font-medium tracking-tight text-fg drop-shadow-[0_1px_8px_rgba(0,0,0,0.28)] sm:text-2xl">
-            @{record.handle}
-          </p>
-        </div>
       </Link>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
-        <span className="font-mono text-xs tabular-nums text-fg/70">
-          {formatId(record.id)}
-        </span>
-        <div className="pointer-events-auto">
-          <CopyMenu record={record} />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-3 pt-10">
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium tracking-tight text-white">
+              @{record.handle}
+            </p>
+            <span className="font-mono text-xs tabular-nums text-white/70">
+              {formatId(record.id)}
+            </span>
+          </div>
+          <div className="pointer-events-auto shrink-0">
+            <CopyMenu record={record} />
+          </div>
         </div>
       </div>
     </article>

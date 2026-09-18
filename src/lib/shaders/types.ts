@@ -83,3 +83,4 @@ export const CARD_MAX_DIMENSION = 720;
 export const HERO_MAX_DIMENSION = 1920;
 export const MAX_DIMENSION = 1920;
 export const MAX_PIXEL_RATIO = 2;
+export const THEME_FADE_MS = 100;

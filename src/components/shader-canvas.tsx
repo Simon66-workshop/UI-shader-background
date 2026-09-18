@@ -15,7 +15,6 @@ export function ShaderCanvas({
   className?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const apiRef = useRef<{ setTheme: (t: "dark" | "light") => void; destroy: () => void } | null>(
     null,
   );
@@ -45,8 +44,12 @@ export function ShaderCanvas({
       apiRef.current = null;
       return;
     }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const canvas = document.createElement("canvas");
+    canvas.className = "absolute inset-0 size-full";
+    canvas.setAttribute("aria-hidden", "true");
+    wrap.appendChild(canvas);
     try {
       apiRef.current = mountShader(canvas, record, { theme, mode });
     } catch {
@@ -55,6 +58,7 @@ export function ShaderCanvas({
     return () => {
       apiRef.current?.destroy();
       apiRef.current = null;
+      canvas.remove();
     };
   }, [on, record, mode]);
 
@@ -62,13 +66,5 @@ export function ShaderCanvas({
     apiRef.current?.setTheme(theme);
   }, [theme]);
 
-  return (
-    <div ref={wrapRef} className={cn("absolute inset-0", className)}>
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 size-full"
-        aria-hidden="true"
-      />
-    </div>
-  );
+  return <div ref={wrapRef} className={cn("absolute inset-0", className)} />;
 }

@@ -22,16 +22,21 @@ function parseId(v: unknown): number | undefined {
   return undefined;
 }
 
+function parseQ(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => ({
     view: parseView(search.view),
     rarity: parseRarity(search.rarity),
     id: parseId(search.id),
+    q: parseQ(search.q),
   }),
   component: ExploreRoute,
 });
 
 function ExploreRoute() {
-  const { view, rarity, id } = Route.useSearch();
-  return <ExplorePage view={view} rarity={rarity} id={id} />;
+  const { view, rarity, id, q } = Route.useSearch();
+  return <ExplorePage view={view} rarity={rarity} id={id} q={q} />;
 }

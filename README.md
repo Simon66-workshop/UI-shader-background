@@ -13,12 +13,16 @@ Phase 1 is a **client-side terminal tool**: 2,240 generated backgrounds, 9 effec
 ```js
 import { createShader } from "./kestrel-shader.webgl.js";
 
-const shader = await createShader(document.querySelector("canvas"), { theme: "dark" });
+const shader = await createShader(document.querySelector("canvas"), {
+  theme: "dark",
+  background: { dark: "#0a0a0b", light: "#f5f5f7" },
+});
 shader.setTheme("light");
+shader.setBackground({ dark: "#111111", light: "#fafafa" });
 shader.destroy();
 ```
 
-Size the canvas with CSS. Set `background.dark` and `background.light` to your page colours as `#rrggbb`. Pixel ratio is capped at 2; the long edge is capped at 1920.
+Size the canvas with CSS. Pass `background.dark` / `background.light` as `#rrggbb`. Pixel ratio is capped at 2; the long edge is capped at 1920.
 
 ## Develop
 

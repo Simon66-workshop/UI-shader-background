@@ -1,10 +1,18 @@
 import { inlinedFragment, paramList } from "./glsl.ts";
-import { EFFECT_INDEX, MAX_DIMENSION, MAX_PIXEL_RATIO, type CopyFormat, type ShaderRecord } from "./types.ts";
+import {
+  EFFECT_INDEX,
+  MAX_DIMENSION,
+  MAX_PIXEL_RATIO,
+  THEME_FADE_MS,
+  type CopyFormat,
+  type ShaderRecord,
+} from "./types.ts";
 import { wgslSource } from "./wgsl.ts";
 
 const RUNTIME_WEBGL = `
 const MAX_PIXEL_RATIO = ${MAX_PIXEL_RATIO};
 const MAX_DIMENSION = ${MAX_DIMENSION};
+const THEME_FADE_MS = ${THEME_FADE_MS};
 
 function compile(gl, type, src) {
   const sh = gl.createShader(type);
@@ -39,10 +47,20 @@ export async function createShader(canvas, options = {}) {
   }
   const loc = (name) => gl.getUniformLocation(program, name);
   let theme = options.theme === "light" ? "light" : "dark";
+  let lightMode = theme === "light" ? 1 : 0;
   let disposed = false;
   let frame = 0;
   let start = performance.now();
-  const background = { dark: "#0a0a0b", light: "#f5f5f7" };
+  let last = start;
+  let inView = true;
+  const background = {
+    dark: (options.background && options.background.dark) || "#0a0a0b",
+    light: (options.background && options.background.light) || "#f5f5f7",
+  };
+
+  function pageHidden() {
+    return typeof document !== "undefined" && document.hidden;
+  }
 
   function pixelRatioChanged() {
     refresh();
@@ -67,11 +85,17 @@ export async function createShader(canvas, options = {}) {
 
   function render(now) {
     if (disposed) return;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const target = theme === "light" ? 1 : 0;
+    const step = dt / (THEME_FADE_MS / 1000);
+    const d = target - lightMode;
+    lightMode = Math.abs(d) <= step ? target : lightMode + Math.sign(d) * step;
     const dpr = size();
     gl.useProgram(program);
     gl.uniform2f(loc("resolution"), canvas.width, canvas.height);
     gl.uniform1f(loc("time"), (now - start) / 1000);
-    gl.uniform1f(loc("lightMode"), theme === "light" ? 1 : 0);
+    gl.uniform1f(loc("lightMode"), lightMode);
     const dark = parseHex(background.dark, [0.039, 0.039, 0.043]);
     const light = parseHex(background.light, [0.961, 0.961, 0.969]);
     gl.uniform3f(loc("darkBackground"), dark[0], dark[1], dark[2]);
@@ -80,35 +104,63 @@ export async function createShader(canvas, options = {}) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  function wantLoop() {
+    return !disposed && inView && !pageHidden();
+  }
+
   function refresh() {
     if (disposed) return;
     render(performance.now());
   }
 
   function tick(now) {
-    if (disposed) return;
+    if (!wantLoop()) {
+      frame = 0;
+      return;
+    }
     render(now);
     frame = requestAnimationFrame(tick);
+  }
+
+  function kick() {
+    if (!wantLoop() || frame) return;
+    last = performance.now();
+    frame = requestAnimationFrame(tick);
+  }
+
+  function onVis() {
+    if (pageHidden()) {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      return;
+    }
+    kick();
   }
 
   const observer = new ResizeObserver(() => refresh());
   observer.observe(canvas);
   const intersection = new IntersectionObserver((entries) => {
-    const vis = entries[0]?.isIntersecting;
-    if (vis && !frame) frame = requestAnimationFrame(tick);
-    if (!vis && frame) {
+    inView = !!entries[0]?.isIntersecting;
+    if (inView) kick();
+    else if (frame) {
       cancelAnimationFrame(frame);
       frame = 0;
     }
   });
   intersection.observe(canvas);
   window.addEventListener("resize", pixelRatioChanged);
+  document.addEventListener("visibilitychange", onVis);
 
-  frame = requestAnimationFrame(tick);
+  kick();
 
   return {
     setTheme(next) {
       theme = next === "light" ? "light" : "dark";
+      kick();
+    },
+    setBackground(next = {}) {
+      if (next.dark) background.dark = next.dark;
+      if (next.light) background.light = next.light;
       refresh();
     },
     destroy() {
@@ -118,6 +170,7 @@ export async function createShader(canvas, options = {}) {
       observer.disconnect();
       intersection.disconnect();
       window.removeEventListener("resize", pixelRatioChanged);
+      document.removeEventListener("visibilitychange", onVis);
       gl.deleteProgram(program);
     },
   };
@@ -127,6 +180,7 @@ export async function createShader(canvas, options = {}) {
 const RUNTIME_WEBGPU = `
 const MAX_PIXEL_RATIO = ${MAX_PIXEL_RATIO};
 const MAX_DIMENSION = ${MAX_DIMENSION};
+const THEME_FADE_MS = ${THEME_FADE_MS};
 
 function parseHex(hex, fallback) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
@@ -162,10 +216,20 @@ export async function createShader(canvas, options = {}) {
   });
 
   let theme = options.theme === "light" ? "light" : "dark";
+  let lightMode = theme === "light" ? 1 : 0;
   let disposed = false;
   let frame = 0;
   let start = performance.now();
-  const background = { dark: "#0a0a0b", light: "#f5f5f7" };
+  let last = start;
+  let inView = true;
+  const background = {
+    dark: (options.background && options.background.dark) || "#0a0a0b",
+    light: (options.background && options.background.light) || "#f5f5f7",
+  };
+
+  function pageHidden() {
+    return typeof document !== "undefined" && document.hidden;
+  }
 
   function pixelRatioChanged() {
     refresh();
@@ -189,6 +253,12 @@ export async function createShader(canvas, options = {}) {
 
   function render(now) {
     if (disposed) return;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const target = theme === "light" ? 1 : 0;
+    const step = dt / (THEME_FADE_MS / 1000);
+    const d = target - lightMode;
+    lightMode = Math.abs(d) <= step ? target : lightMode + Math.sign(d) * step;
     const dpr = size();
     const dark = parseHex(background.dark, [0.039, 0.039, 0.043]);
     const light = parseHex(background.light, [0.961, 0.961, 0.969]);
@@ -196,7 +266,7 @@ export async function createShader(canvas, options = {}) {
     data[0] = canvas.width;
     data[1] = canvas.height;
     data[2] = (now - start) / 1000;
-    data[3] = theme === "light" ? 1 : 0;
+    data[3] = lightMode;
     data[4] = dark[0]; data[5] = dark[1]; data[6] = dark[2];
     data[8] = light[0]; data[9] = light[1]; data[10] = light[2];
     data[12] = dpr;
@@ -213,33 +283,61 @@ export async function createShader(canvas, options = {}) {
     device.queue.submit([encoder.finish()]);
   }
 
+  function wantLoop() {
+    return !disposed && inView && !pageHidden();
+  }
+
   function refresh() {
     render(performance.now());
   }
 
   function tick(now) {
-    if (disposed) return;
+    if (!wantLoop()) {
+      frame = 0;
+      return;
+    }
     render(now);
     frame = requestAnimationFrame(tick);
+  }
+
+  function kick() {
+    if (!wantLoop() || frame) return;
+    last = performance.now();
+    frame = requestAnimationFrame(tick);
+  }
+
+  function onVis() {
+    if (pageHidden()) {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      return;
+    }
+    kick();
   }
 
   const observer = new ResizeObserver(() => refresh());
   observer.observe(canvas);
   const intersection = new IntersectionObserver((entries) => {
-    const vis = entries[0]?.isIntersecting;
-    if (vis && !frame) frame = requestAnimationFrame(tick);
-    if (!vis && frame) {
+    inView = !!entries[0]?.isIntersecting;
+    if (inView) kick();
+    else if (frame) {
       cancelAnimationFrame(frame);
       frame = 0;
     }
   });
   intersection.observe(canvas);
   window.addEventListener("resize", pixelRatioChanged);
-  frame = requestAnimationFrame(tick);
+  document.addEventListener("visibilitychange", onVis);
+  kick();
 
   return {
     setTheme(next) {
       theme = next === "light" ? "light" : "dark";
+      kick();
+    },
+    setBackground(next = {}) {
+      if (next.dark) background.dark = next.dark;
+      if (next.light) background.light = next.light;
       refresh();
     },
     destroy() {
@@ -249,6 +347,7 @@ export async function createShader(canvas, options = {}) {
       observer.disconnect();
       intersection.disconnect();
       window.removeEventListener("resize", pixelRatioChanged);
+      document.removeEventListener("visibilitychange", onVis);
     },
   };
 }
@@ -258,14 +357,19 @@ function reactWrapper(importName: string, handle: string) {
   return `import { useEffect, useRef } from "react";
 import { createShader } from "./${importName}";
 
-export function ShaderBackground({ theme = "dark", className }) {
+export function ShaderBackground({ theme = "dark", className, background }) {
   const ref = useRef(null);
+  const dark = background && background.dark;
+  const light = background && background.light;
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     let api;
     let cancelled = false;
-    createShader(canvas, { theme: "dark" }).then((shader) => {
+    createShader(canvas, {
+      theme: "dark",
+      background: { dark, light },
+    }).then((shader) => {
       if (cancelled) {
         shader.destroy();
         return;
@@ -277,7 +381,7 @@ export function ShaderBackground({ theme = "dark", className }) {
       cancelled = true;
       api?.destroy();
     };
-  }, [theme]);
+  }, [theme, dark, light]);
   return (
     <canvas
       ref={ref}
@@ -302,12 +406,15 @@ export function generateCopyText(record: ShaderRecord, format: CopyFormat): stri
  * ${kind}${extra}
  *
  * import { createShader } from "./${kind.includes("WebGPU") ? fileWebgpu : fileWebgl}";
- * const shader = await createShader(document.querySelector("canvas"), { theme: "dark" });
+ * const shader = await createShader(document.querySelector("canvas"), {
+ *   theme: "dark",
+ *   background: { dark: "#0a0a0b", light: "#f5f5f7" },
+ * });
  * shader.setTheme("light");
+ * shader.setBackground({ dark: "#111111", light: "#fafafa" });
  * shader.destroy();
  *
- * Size the canvas with CSS. Set background.dark and background.light
- * to your page colours as #rrggbb.
+ * Size the canvas with CSS. background.dark / background.light are #rrggbb.
  */
 
 `;
@@ -336,13 +443,13 @@ export function generateCopyText(record: ShaderRecord, format: CopyFormat): stri
 
   if (format === "react-webgl") {
     return (
-      `/*\n * @${handle} · Fieldkit · React · WebGL\n * background.dark / background.light live in the imported module.\n */\n` +
+      `/*\n * @${handle} · Fieldkit · React · WebGL\n * Pass background={{ dark, light }} or call setBackground on the module API.\n */\n` +
       reactWrapper(fileWebgl, handle)
     );
   }
 
   return (
-    `/*\n * @${handle} · Fieldkit · React · WebGPU\n * background.dark / background.light live in the imported module.\n */\n` +
+    `/*\n * @${handle} · Fieldkit · React · WebGPU\n * Pass background={{ dark, light }} or call setBackground on the module API.\n */\n` +
     reactWrapper(fileWebgpu, handle)
   );
 }

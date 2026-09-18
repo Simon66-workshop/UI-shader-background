@@ -1,5 +1,5 @@
 import { EFFECT_INDEX, type ShaderRecord } from "./types.ts";
-import { GLOW_FLOOR } from "./glsl.ts";
+import { GLOW_FLOOR, GLOW_GAMMA } from "./glsl.ts";
 
 function num(n: number): string {
   return n.toFixed(9).replace(/0+$/, "0").replace(/\.$/, ".0");
@@ -85,9 +85,10 @@ fn fieldColor(frag_in: vec2<f32>, t: f32) -> vec3<f32> {
   p = rotRow(THETA, p);
 ${liquid}${mosaic}  p = warp(p, t);
   let band = sin(p.x * 1.35 + p.y * 0.32 + t * HUE_TRAVEL);
-  let glow = exp(-band * band * (5.4 + LAYERS * 0.07));
-  let glow2 = exp(-pow(sin(p.y * 0.92 - p.x * 0.38 + t * 0.55), 2.0) * 9.5) * 0.5;
-  let g = clamp(glow + glow2, 0.0, 1.0);
+  let glow = exp(-band * band * (7.8 + LAYERS * 0.1));
+  let glow2 = exp(-pow(sin(p.y * 0.92 - p.x * 0.38 + t * 0.55), 2.0) * 12.5) * 0.42;
+  let gRaw = clamp(glow + glow2, 0.0, 1.0);
+  let g = pow(gRaw, ${GLOW_GAMMA.toFixed(2)});
   var h = HUE + g * HUE_SPREAD + t * COLOUR_CYCLE * 0.12;
   h = h - floor(h);
   var s = mix(0.28, 0.92, clamp(CHROMA * 3.4, 0.0, 1.0));

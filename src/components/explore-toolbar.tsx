@@ -6,16 +6,32 @@ import { cn } from "@/lib/utils";
 export function ExploreToolbar({
   view,
   rarity,
+  query,
   onView,
   onRarity,
+  onQuery,
 }: {
   view: "grid" | "immersive";
   rarity: "all" | EffectType;
+  query: string;
   onView: (v: "grid" | "immersive") => void;
   onRarity: (r: "all" | EffectType) => void;
+  onQuery: (q: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(query);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDraft(query);
+  }, [query]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (draft !== query) onQuery(draft);
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [draft, query, onQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -30,7 +46,7 @@ export function ExploreToolbar({
     rarity === "all" ? "All rarities" : EFFECT_META[rarity].label;
 
   return (
-    <div className="flex justify-center px-4">
+    <div className="flex flex-col items-center gap-3 px-4">
       <div className="flex items-center gap-1 rounded-full border border-border bg-bg-elevated p-1">
         <button
           type="button"
@@ -95,6 +111,16 @@ export function ExploreToolbar({
           ) : null}
         </div>
       </div>
+      <label className="relative w-full max-w-sm">
+        <span className="sr-only">Search handle or id</span>
+        <input
+          type="search"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Search @kestrel or #2240"
+          className="h-10 w-full rounded-full border border-border bg-bg-elevated px-4 text-sm text-fg outline-none placeholder:text-fg-subtle focus-visible:ring-2 focus-visible:ring-ring/60"
+        />
+      </label>
     </div>
   );
 }

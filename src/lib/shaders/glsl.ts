@@ -7,6 +7,8 @@ import {
 
 /** Empty-field mix floor. Was 0.18; raised so immersive heroes keep chroma. */
 export const GLOW_FLOOR = 0.42;
+/** >1 crushes midtones so ribbons stay narrow against the floor. */
+export const GLOW_GAMMA = 1.45;
 
 export const VERTEX_SRC = `#version 300 es
 precision highp float;
@@ -83,9 +85,10 @@ vec3 fieldColor(vec2 frag, float t) {
   p *= rot(THETA);
 ${liquid}${mosaic}  p = warp(p, t);
   float band = sin(p.x * 1.35 + p.y * 0.32 + t * HUE_TRAVEL);
-  float glow = exp(-band * band * (5.4 + LAYERS * 0.07));
-  float glow2 = exp(-pow(sin(p.y * 0.92 - p.x * 0.38 + t * 0.55), 2.0) * 9.5) * 0.5;
-  float g = clamp(glow + glow2, 0.0, 1.0);
+  float glow = exp(-band * band * (7.8 + LAYERS * 0.1));
+  float glow2 = exp(-pow(sin(p.y * 0.92 - p.x * 0.38 + t * 0.55), 2.0) * 12.5) * 0.42;
+  float gRaw = clamp(glow + glow2, 0.0, 1.0);
+  float g = pow(gRaw, ${GLOW_GAMMA.toFixed(2)});
   float h = fract(HUE + g * HUE_SPREAD + t * COLOUR_CYCLE * 0.12);
   float s = mix(0.28, 0.92, clamp(CHROMA * 3.4, 0.0, 1.0));
   float l = mix(0.10, mix(0.52, 0.62, LIGHTNESS), g);

@@ -48,7 +48,7 @@ export function SiteHeader({ active }: { active: "explore" | "about" }) {
       <div className="flex w-full max-w-6xl items-center justify-between gap-3 rounded-full border border-border bg-bg/80 px-2 py-1.5 backdrop-blur-md">
         <Link
           to="/"
-          search={{ view: "grid", rarity: "all", id: undefined }}
+          search={{ view: "grid", rarity: "all", id: undefined, q: "" }}
           className="flex items-center gap-2 rounded-full py-1 pr-3 pl-2 text-fg transition-[opacity] duration-150 hover:opacity-80"
         >
           <Mark className="size-6" />
@@ -71,7 +71,7 @@ export function SiteHeader({ active }: { active: "explore" | "about" }) {
           </Link>
           <Link
             to="/"
-            search={{ view: "grid", rarity: "all", id: undefined }}
+            search={{ view: "grid", rarity: "all", id: undefined, q: "" }}
             className={exploreClass}
           >
             Explore

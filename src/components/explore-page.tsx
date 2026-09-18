@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EFFECT_META,
   EFFECT_TYPES,
@@ -26,21 +26,37 @@ export function ExplorePage({
   view,
   rarity,
   id,
+  q,
 }: {
   view: "grid" | "immersive";
   rarity: string;
   id?: number;
+  q: string;
 }) {
   const rarityKey: "all" | EffectType = isEffect(rarity) ? rarity : "all";
   const navigate = useNavigate({ from: "/" });
-  const list = useMemo(() => filterCatalog(rarityKey), [rarityKey]);
+  const list = useMemo(() => filterCatalog(rarityKey, q), [rarityKey, q]);
   const page = view === "immersive" ? IMMERSIVE_PAGE : GRID_PAGE;
   const [shown, setShown] = useState(page);
   const sentinel = useRef<HTMLDivElement>(null);
 
+  const go = useCallback(
+    (next: { view?: "grid" | "immersive"; rarity?: string; id?: number; q?: string }) => {
+      void navigate({
+        search: {
+          view: next.view ?? view,
+          rarity: next.rarity ?? rarityKey,
+          id: next.id,
+          q: next.q ?? q,
+        },
+      });
+    },
+    [navigate, view, rarityKey, q],
+  );
+
   useEffect(() => {
     setShown(page);
-  }, [rarityKey, view, page]);
+  }, [rarityKey, view, page, q]);
 
   useEffect(() => {
     const el = sentinel.current;
@@ -52,7 +68,7 @@ export function ExplorePage({
     });
     io.observe(el);
     return () => io.disconnect();
-  }, [list.length, page, rarityKey, view]);
+  }, [list.length, page, rarityKey, view, q]);
 
   useEffect(() => {
     const el = sentinel.current;
@@ -66,25 +82,23 @@ export function ExplorePage({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && id) {
-        void navigate({ search: { view, rarity: rarityKey, id: undefined } });
+        go({ id: undefined });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [id, navigate, rarityKey, view]);
+  }, [id, go]);
 
   const visible = list.slice(0, shown);
   const selected = id ? findShader(id) : undefined;
-  const countLabel =
-    rarityKey === "all"
-      ? `${list.length.toLocaleString("en-US")} fields`
-      : `${list.length.toLocaleString("en-US")} fields`;
-  const sub =
-    rarityKey === "all"
+  const countLabel = `${list.length.toLocaleString("en-US")} fields`;
+  const sub = q.trim()
+    ? `Matching “${q.trim()}”.`
+    : rarityKey === "all"
       ? "Every shader. Newest first."
       : `${EFFECT_META[rarityKey].label} shaders. Newest first.`;
 
-  const search = { view, rarity: rarityKey, id: undefined as number | undefined };
+  const search = { view, rarity: rarityKey, id: undefined as number | undefined, q };
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -93,12 +107,10 @@ export function ExplorePage({
         <ExploreToolbar
           view={view}
           rarity={rarityKey}
-          onView={(next) => {
-            void navigate({ search: { view: next, rarity: rarityKey, id: undefined } });
-          }}
-          onRarity={(next) => {
-            void navigate({ search: { view, rarity: next, id: undefined } });
-          }}
+          query={q}
+          onView={(next) => go({ view: next, id: undefined })}
+          onRarity={(next) => go({ rarity: next, id: undefined })}
+          onQuery={(next) => go({ q: next, id: undefined })}
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <h1 className="max-w-xl text-3xl font-medium tracking-tight text-balance sm:text-4xl">
@@ -110,7 +122,9 @@ export function ExplorePage({
           </p>
         </div>
 
-        {view === "grid" ? (
+        {visible.length === 0 ? (
+          <p className="py-16 text-center text-sm text-fg-muted">No fields match.</p>
+        ) : view === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((record) => (
               <ShaderCard key={record.id} record={record} search={search} />
@@ -130,24 +144,28 @@ export function ExplorePage({
                   aria-label={`Open @${record.handle}`}
                 >
                   <ShaderCanvas record={record} mode="hero" />
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <p className="text-3xl font-medium tracking-tight text-fg drop-shadow-[0_2px_12px_rgba(0,0,0,0.28)] sm:text-5xl">
-                      @{record.handle}
-                    </p>
-                  </div>
                 </Link>
-                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4">
-                  <span className="font-mono text-xs tabular-nums text-fg/70">
-                    {formatId(record.id)}
-                  </span>
-                  <CopyMenu record={record} />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-4 pt-12">
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-lg font-medium tracking-tight text-white sm:text-2xl">
+                        @{record.handle}
+                      </p>
+                      <span className="font-mono text-xs tabular-nums text-white/70">
+                        {formatId(record.id)}
+                      </span>
+                    </div>
+                    <div className="pointer-events-auto shrink-0">
+                      <CopyMenu record={record} />
+                    </div>
+                  </div>
                 </div>
               </article>
             ))}
           </div>
         )}
 
-        {shown < list.length ? (
+        {visible.length === 0 ? null : shown < list.length ? (
           <div
             ref={sentinel}
             className="py-8 text-center text-sm text-fg-subtle"

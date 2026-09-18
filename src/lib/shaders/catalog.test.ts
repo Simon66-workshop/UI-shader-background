@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CATALOG, getCatalog, rarityCounts } from "./catalog.ts";
+import { CATALOG, filterCatalog, getCatalog, rarityCounts } from "./catalog.ts";
 import { generateCopyText } from "./copy-code.ts";
-import { fragmentSource, GLOW_FLOOR } from "./glsl.ts";
+import { fragmentSource, GLOW_FLOOR, GLOW_GAMMA } from "./glsl.ts";
 import { capPixelRatio } from "./rng.ts";
 import {
   CATALOG_SIZE,
@@ -122,10 +122,13 @@ describe("hidpi caps", () => {
 describe("shader variants", () => {
   it("glow floor is 0.42 in both languages", () => {
     assert.equal(GLOW_FLOOR, 0.42);
+    assert.equal(GLOW_GAMMA, 1.45);
     const glsl = fragmentSource("pure");
     const wgsl = wgslSource(ofType("pure"));
     assert.match(glsl, /mix\(0\.42, 1\.0, g\)/);
     assert.match(wgsl, /mix\(0\.42, 1\.0, g\)/);
+    assert.match(glsl, /pow\(gRaw, 1\.45\)/);
+    assert.match(wgsl, /pow\(gRaw, 1\.45\)/);
   });
 
   it("pure program omits Bayer / ASCII / mosaic", () => {
@@ -181,5 +184,29 @@ describe("shader variants", () => {
     assert.match(gpu("mosaic"), /let cell = mix\(8\.0, 28\.0, 0\.55\)/);
     assert.match(gpu("pure"), /@fragment/);
     assert.doesNotMatch(gpu("pure"), /fn bayer4/);
+  });
+
+  it("copy API exposes background options", () => {
+    const text = generateCopyText(ofType("pure"), "webgl");
+    assert.match(text, /background:\s*\{\s*dark:/);
+    assert.match(text, /setBackground/);
+    assert.match(text, /visibilitychange/);
+    const gpu = generateCopyText(ofType("pure"), "webgpu");
+    assert.match(gpu, /setBackground/);
+    const react = generateCopyText(ofType("pure"), "react-webgl");
+    assert.match(react, /background/);
+  });
+});
+
+describe("search", () => {
+  it("matches handle and id", () => {
+    const byHandle = filterCatalog("all", "kestrel");
+    assert.ok(byHandle.some((s) => s.handle === "kestrel"));
+    const byAt = filterCatalog("all", "@kestrel");
+    assert.ok(byAt.some((s) => s.handle === "kestrel"));
+    const byId = filterCatalog("all", "#2240");
+    assert.equal(byId.length, 1);
+    assert.equal(byId[0]?.id, 2240);
+    assert.equal(filterCatalog("grain", "no-such-handle-xyz").length, 0);
   });
 });
