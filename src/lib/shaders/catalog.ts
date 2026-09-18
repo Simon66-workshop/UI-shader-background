@@ -221,13 +221,11 @@ export function filterCatalog(
   if (!needle) return base;
   const stripped = needle.startsWith("@") || needle.startsWith("#") ? needle.slice(1) : needle;
   const idDigits = stripped.replaceAll(",", "");
-  const asId = Number(idDigits);
-  const wantId = /^[0-9]+$/.test(idDigits) && Number.isFinite(asId);
-  return base.filter((s) => {
-    if (s.handle.toLowerCase().includes(stripped)) return true;
-    if (wantId && (s.id === asId || String(s.id).includes(idDigits))) return true;
-    return false;
-  });
+  if (/^[0-9]+$/.test(idDigits)) {
+    const asId = Number(idDigits);
+    return base.filter((s) => s.id === asId);
+  }
+  return base.filter((s) => s.handle.toLowerCase().includes(stripped));
 }
 
 export function findShader(id: number): ShaderRecord | undefined {

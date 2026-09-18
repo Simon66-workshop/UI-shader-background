@@ -39,20 +39,32 @@ export function ExplorePage({
   const page = view === "immersive" ? IMMERSIVE_PAGE : GRID_PAGE;
   const [shown, setShown] = useState(page);
   const sentinel = useRef<HTMLDivElement>(null);
+  const qParam = q.trim() ? q : undefined;
 
   const go = useCallback(
     (next: { view?: "grid" | "immersive"; rarity?: string; id?: number; q?: string }) => {
+      const query = next.q ?? q;
       void navigate({
         search: {
           view: next.view ?? view,
           rarity: next.rarity ?? rarityKey,
           id: next.id,
-          q: next.q ?? q,
+          q: query.trim() ? query : undefined,
         },
       });
     },
     [navigate, view, rarityKey, q],
   );
+
+  const onView = useCallback(
+    (next: "grid" | "immersive") => go({ view: next, id: undefined }),
+    [go],
+  );
+  const onRarity = useCallback(
+    (next: "all" | EffectType) => go({ rarity: next, id: undefined }),
+    [go],
+  );
+  const onQuery = useCallback((next: string) => go({ q: next, id: undefined }), [go]);
 
   useEffect(() => {
     setShown(page);
@@ -98,7 +110,12 @@ export function ExplorePage({
       ? "Every shader. Newest first."
       : `${EFFECT_META[rarityKey].label} shaders. Newest first.`;
 
-  const search = { view, rarity: rarityKey, id: undefined as number | undefined, q };
+  const search = {
+    view,
+    rarity: rarityKey,
+    id: undefined as number | undefined,
+    q: qParam as string | undefined,
+  };
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -108,9 +125,9 @@ export function ExplorePage({
           view={view}
           rarity={rarityKey}
           query={q}
-          onView={(next) => go({ view: next, id: undefined })}
-          onRarity={(next) => go({ rarity: next, id: undefined })}
-          onQuery={(next) => go({ q: next, id: undefined })}
+          onView={onView}
+          onRarity={onRarity}
+          onQuery={onQuery}
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <h1 className="max-w-xl text-3xl font-medium tracking-tight text-balance sm:text-4xl">
@@ -127,7 +144,7 @@ export function ExplorePage({
         ) : view === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((record) => (
-              <ShaderCard key={record.id} record={record} search={search} />
+              <ShaderCard key={record.id} record={record} search={search} live={!selected} />
             ))}
           </div>
         ) : (
@@ -143,7 +160,7 @@ export function ExplorePage({
                   className="absolute inset-0 block"
                   aria-label={`Open @${record.handle}`}
                 >
-                  <ShaderCanvas record={record} mode="hero" />
+                  {selected ? null : <ShaderCanvas record={record} mode="hero" />}
                 </Link>
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-4 pt-12">
                   <div className="flex items-end justify-between gap-3">
@@ -156,7 +173,7 @@ export function ExplorePage({
                       </span>
                     </div>
                     <div className="pointer-events-auto shrink-0">
-                      <CopyMenu record={record} />
+                      <CopyMenu record={record} tone="on-field" />
                     </div>
                   </div>
                 </div>
@@ -165,7 +182,7 @@ export function ExplorePage({
           </div>
         )}
 
-        {visible.length === 0 ? null : shown < list.length ? (
+        {selected || visible.length === 0 ? null : shown < list.length ? (
           <div
             ref={sentinel}
             className="py-8 text-center text-sm text-fg-subtle"

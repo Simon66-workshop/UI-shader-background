@@ -5,9 +5,11 @@ import { cn } from "@/lib/utils";
 export function CopyMenu({
   record,
   align = "end",
+  tone = "default",
 }: {
   record: ShaderRecord;
   align?: "start" | "end";
+  tone?: "default" | "on-field";
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<CopyFormat | null>(null);
@@ -65,11 +67,14 @@ export function CopyMenu({
           setOpen((v) => !v);
         }}
         className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-bg/55 px-3 text-xs font-medium text-fg backdrop-blur-sm",
-          "transition-[opacity,transform,background-color] duration-150 ease-out hover:bg-bg/80 active:scale-[0.96]",
+          "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium backdrop-blur-sm",
+          "transition-[opacity,transform,background-color] duration-150 ease-out active:scale-[0.96]",
+          tone === "on-field"
+            ? "border-white/25 bg-black/40 text-white hover:bg-black/55"
+            : "border-border bg-bg/55 text-fg hover:bg-bg/80",
         )}
       >
-        <span aria-hidden className="text-fg-muted">
+        <span aria-hidden className={tone === "on-field" ? "text-white/70" : "text-fg-muted"}>
           {"</>"}
         </span>
         Copy code

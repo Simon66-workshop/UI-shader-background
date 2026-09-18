@@ -3,7 +3,6 @@ import { capDimension, capPixelRatio } from "./rng.ts";
 import {
   CARD_MAX_DIMENSION,
   CARD_MAX_DPR,
-  EFFECT_TYPES,
   HERO_MAX_DIMENSION,
   HERO_MAX_DPR,
   MAX_CONTEXTS,
@@ -15,6 +14,7 @@ import {
 export type ThemeName = "dark" | "light";
 
 type LocMap = Record<string, WebGLUniformLocation | null>;
+type Rgb = [number, number, number];
 
 type ProgramSlot = {
   program: WebGLProgram;
@@ -24,6 +24,7 @@ type ProgramSlot = {
 type Gpu = {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
+  vao: WebGLVertexArrayObject;
   programs: Map<EffectType, ProgramSlot>;
   lost: boolean;
 };
@@ -36,7 +37,6 @@ type Live = {
   lightMode: number;
   mode: "card" | "hero";
   disposed: boolean;
-  frame: number;
   width: number;
   height: number;
   dpr: number;
@@ -76,9 +76,12 @@ const UNIFORM_KEYS = [
 ] as const;
 
 const THEME_FADE_SEC = THEME_FADE_MS / 1000;
+const FALLBACK_DARK: Rgb = [10 / 255, 10 / 255, 11 / 255];
+const FALLBACK_LIGHT: Rgb = [245 / 255, 245 / 255, 247 / 255];
 
 let gpu: Gpu | null = null;
 let visHooked = false;
+let loopId = 0;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   const sh = gl.createShader(type);
@@ -124,19 +127,16 @@ function bootGpu(): Gpu {
     powerPreference: "low-power",
   });
   if (!gl) throw new Error("WebGL2 unavailable");
-  const programs = new Map<EffectType, ProgramSlot>();
-  for (const type of EFFECT_TYPES) {
-    const program = link(gl, fragmentSource(type));
-    const loc: LocMap = {};
-    for (const k of UNIFORM_KEYS) loc[k] = gl.getUniformLocation(program, k);
-    programs.set(type, { program, loc });
-  }
-  const next: Gpu = { canvas, gl, programs, lost: false };
+  const vao = gl.createVertexArray();
+  if (!vao) throw new Error("vao alloc failed");
+  gl.bindVertexArray(vao);
+  const next: Gpu = { canvas, gl, vao, programs: new Map(), lost: false };
   canvas.addEventListener(
     "webglcontextlost",
     (e) => {
       e.preventDefault();
       next.lost = true;
+      stopLoop();
     },
     false,
   );
@@ -152,7 +152,19 @@ function bootGpu(): Gpu {
   return next;
 }
 
-function cssRgb(varName: string, fallback: [number, number, number]): [number, number, number] {
+function programFor(type: EffectType): ProgramSlot {
+  const g = bootGpu();
+  const hit = g.programs.get(type);
+  if (hit) return hit;
+  const program = link(g.gl, fragmentSource(type));
+  const loc: LocMap = {};
+  for (const k of UNIFORM_KEYS) loc[k] = g.gl.getUniformLocation(program, k);
+  const slot = { program, loc };
+  g.programs.set(type, slot);
+  return slot;
+}
+
+function cssRgb(varName: string, fallback: Rgb): Rgb {
   if (typeof getComputedStyle === "undefined") return fallback;
   const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
   const hex = raw.startsWith("#") ? raw : "";
@@ -163,26 +175,20 @@ function cssRgb(varName: string, fallback: [number, number, number]): [number, n
   return fallback;
 }
 
+function themeColors(): { dark: Rgb; light: Rgb } {
+  return {
+    dark: cssRgb("--shader-bg-dark", FALLBACK_DARK),
+    light: cssRgb("--shader-bg-light", FALLBACK_LIGHT),
+  };
+}
+
 function approach(current: number, target: number, step: number) {
   const d = target - current;
   if (Math.abs(d) <= step) return target;
   return current + Math.sign(d) * step;
 }
 
-function draw(live: Live, now: number) {
-  if (live.disposed || !live.visible) return;
-  if (typeof document !== "undefined" && document.hidden) return;
-  const gpuNow = bootGpu();
-  const gl = gpuNow.gl;
-  const slot = gpuNow.programs.get(live.record.type);
-  if (!slot) return;
-
-  const dt = Math.min(0.05, (now - live.lastTime) / 1000);
-  live.lastTime = now;
-  if (!live.reduced) live.elapsed += dt;
-  const target = live.theme === "light" ? 1 : 0;
-  live.lightMode = live.reduced ? target : approach(live.lightMode, target, dt / THEME_FADE_SEC);
-
+function measure(live: Live) {
   const rect = live.canvas.getBoundingClientRect();
   const cap = live.mode === "hero" ? HERO_MAX_DPR : CARD_MAX_DPR;
   const maxEdge = live.mode === "hero" ? HERO_MAX_DIMENSION : CARD_MAX_DIMENSION;
@@ -191,16 +197,27 @@ function draw(live: Live, now: number) {
   live.width = dim.width;
   live.height = dim.height;
   live.dpr = dpr;
+}
 
-  if (gpuNow.canvas.width !== dim.width || gpuNow.canvas.height !== dim.height) {
-    gpuNow.canvas.width = dim.width;
-    gpuNow.canvas.height = dim.height;
-  }
-  gl.viewport(0, 0, dim.width, dim.height);
+function blit(
+  live: Live,
+  gpuNow: Gpu,
+  slot: ProgramSlot,
+  now: number,
+  dark: Rgb,
+  light: Rgb,
+) {
+  const gl = gpuNow.gl;
+  const dt = Math.min(0.05, (now - live.lastTime) / 1000);
+  live.lastTime = now;
+  if (!live.reduced) live.elapsed += dt;
+  const target = live.theme === "light" ? 1 : 0;
+  live.lightMode = live.reduced ? target : approach(live.lightMode, target, dt / THEME_FADE_SEC);
+
+  gl.bindVertexArray(gpuNow.vao);
+  gl.viewport(0, 0, live.width, live.height);
   gl.useProgram(slot.program);
   const p = live.record.params;
-  const dark = cssRgb("--shader-bg-dark", [10 / 255, 10 / 255, 11 / 255]);
-  const light = cssRgb("--shader-bg-light", [245 / 255, 245 / 255, 247 / 255]);
   const set2 = (k: string, x: number, y: number) => {
     const loc = slot.loc[k];
     if (loc) gl.uniform2f(loc, x, y);
@@ -209,16 +226,16 @@ function draw(live: Live, now: number) {
     const loc = slot.loc[k];
     if (loc) gl.uniform1f(loc, x);
   };
-  const set3 = (k: string, v: [number, number, number]) => {
+  const set3 = (k: string, v: Rgb) => {
     const loc = slot.loc[k];
     if (loc) gl.uniform3f(loc, v[0], v[1], v[2]);
   };
-  set2("resolution", dim.width, dim.height);
+  set2("resolution", live.width, live.height);
   set1("time", live.elapsed);
   set1("lightMode", live.lightMode);
   set3("darkBackground", dark);
   set3("lightBackground", light);
-  set1("pixelRatio", dpr);
+  set1("pixelRatio", live.dpr);
   set1("HUE", p.hue);
   set1("HUE_SPREAD", p.hueSpread);
   set1("HUE_TRAVEL", p.hueTravel);
@@ -237,12 +254,37 @@ function draw(live: Live, now: number) {
   set1("ASPECT_Y", p.aspectY);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-  if (live.canvas.width !== dim.width || live.canvas.height !== dim.height) {
-    live.canvas.width = dim.width;
-    live.canvas.height = dim.height;
+  if (live.canvas.width !== live.width || live.canvas.height !== live.height) {
+    live.canvas.width = live.width;
+    live.canvas.height = live.height;
   }
   live.ctx.imageSmoothingEnabled = false;
-  live.ctx.drawImage(gpuNow.canvas, 0, 0);
+  // Viewport (0,0,w,h) is bottom-left in the drawing buffer; the canvas
+  // image source is top-left, so that rectangle sits at y = gh - h.
+  const srcY = gpuNow.canvas.height - live.height;
+  live.ctx.drawImage(
+    gpuNow.canvas,
+    0,
+    srcY,
+    live.width,
+    live.height,
+    0,
+    0,
+    live.width,
+    live.height,
+  );
+}
+
+function drawOne(live: Live, now: number) {
+  if (live.disposed || !live.visible) return;
+  if (pageHidden()) return;
+  measure(live);
+  const gpuNow = bootGpu();
+  if (gpuNow.lost || gpuNow.gl.isContextLost()) return;
+  if (gpuNow.canvas.width < live.width) gpuNow.canvas.width = live.width;
+  if (gpuNow.canvas.height < live.height) gpuNow.canvas.height = live.height;
+  const colors = themeColors();
+  blit(live, gpuNow, programFor(live.record.type), now, colors.dark, colors.light);
 }
 
 const pool: Live[] = [];
@@ -251,33 +293,43 @@ function pageHidden() {
   return typeof document !== "undefined" && document.hidden;
 }
 
+function stopLoop() {
+  if (!loopId) return;
+  cancelAnimationFrame(loopId);
+  loopId = 0;
+}
+
 function tick(now: number) {
-  if (pageHidden()) {
-    for (const live of pool) live.frame = 0;
-    return;
+  loopId = 0;
+  if (pageHidden()) return;
+  const vis = pool.filter((l) => !l.disposed && l.visible);
+  if (vis.length === 0) return;
+
+  for (const live of vis) measure(live);
+  let maxW = 1;
+  let maxH = 1;
+  for (const live of vis) {
+    if (live.width > maxW) maxW = live.width;
+    if (live.height > maxH) maxH = live.height;
   }
-  let any = false;
-  for (const live of pool) {
-    if (live.disposed || !live.visible) continue;
-    draw(live, now);
-    any = true;
-    live.frame = 0;
+  const gpuNow = bootGpu();
+  if (gpuNow.lost || gpuNow.gl.isContextLost()) return;
+  if (gpuNow.canvas.width !== maxW || gpuNow.canvas.height !== maxH) {
+    gpuNow.canvas.width = maxW;
+    gpuNow.canvas.height = maxH;
   }
-  if (any) {
-    const id = requestAnimationFrame(tick);
-    for (const live of pool) {
-      if (!live.disposed) live.frame = id;
-    }
+  const colors = themeColors();
+  for (const live of vis) {
+    blit(live, gpuNow, programFor(live.record.type), now, colors.dark, colors.light);
   }
+  loopId = requestAnimationFrame(tick);
 }
 
 function ensureLoop() {
+  if (loopId) return;
   if (pageHidden()) return;
-  if (pool.some((l) => !l.disposed && l.visible && l.frame)) return;
-  const id = requestAnimationFrame(tick);
-  for (const live of pool) {
-    if (!live.disposed) live.frame = id;
-  }
+  if (!pool.some((l) => !l.disposed && l.visible)) return;
+  loopId = requestAnimationFrame(tick);
 }
 
 function hookVisibility() {
@@ -285,7 +337,7 @@ function hookVisibility() {
   visHooked = true;
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      for (const live of pool) live.frame = 0;
+      stopLoop();
       return;
     }
     const now = performance.now();
@@ -303,25 +355,7 @@ function destroyLive(live: Live) {
   if (live.mq && live.onMq) live.mq.removeEventListener("change", live.onMq);
   const i = pool.indexOf(live);
   if (i >= 0) pool.splice(i, 1);
-}
-
-function evictIfNeeded(keep?: Live): boolean {
-  while (pool.length >= MAX_CONTEXTS) {
-    const idle = pool.find((l) => l !== keep && !l.visible);
-    if (idle) {
-      destroyLive(idle);
-      continue;
-    }
-    const card = pool.find((l) => l !== keep && l.mode === "card");
-    if (card) {
-      destroyLive(card);
-      continue;
-    }
-    const other = pool.find((l) => l !== keep);
-    if (!other) return false;
-    destroyLive(other);
-  }
-  return true;
+  if (!pool.some((l) => !l.disposed && l.visible)) stopLoop();
 }
 
 export function mountShader(
@@ -330,12 +364,8 @@ export function mountShader(
   options: { theme: ThemeName; mode: "card" | "hero" },
 ): { setTheme: (t: ThemeName) => void; destroy: () => void } {
   hookVisibility();
-  bootGpu();
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("2d context unavailable");
-  if (!evictIfNeeded()) {
-    throw new Error("webgl pool full");
-  }
 
   const live: Live = {
     canvas,
@@ -345,7 +375,6 @@ export function mountShader(
     lightMode: options.theme === "light" ? 1 : 0,
     mode: options.mode,
     disposed: false,
-    frame: 0,
     width: 0,
     height: 0,
     dpr: 1,
@@ -354,7 +383,9 @@ export function mountShader(
     visible: true,
     reduced: false,
     resize: new ResizeObserver(() => {
-      if (!live.disposed && live.visible) draw(live, performance.now());
+      if (live.disposed || !live.visible) return;
+      if (loopId) return;
+      drawOne(live, performance.now());
     }),
     io: new IntersectionObserver((entries) => {
       const entry = entries[0];
@@ -362,6 +393,8 @@ export function mountShader(
       if (live.visible) {
         live.lastTime = performance.now();
         ensureLoop();
+      } else if (!pool.some((l) => !l.disposed && l.visible)) {
+        stopLoop();
       }
     }),
   };
@@ -378,17 +411,13 @@ export function mountShader(
   }
 
   pool.push(live);
-  draw(live, performance.now());
+  drawOne(live, performance.now());
   ensureLoop();
 
   return {
     setTheme(theme) {
       live.theme = theme;
-      if (live.reduced) {
-        live.lightMode = theme === "light" ? 1 : 0;
-        if (live.visible) draw(live, performance.now());
-        return;
-      }
+      if (live.reduced) live.lightMode = theme === "light" ? 1 : 0;
       ensureLoop();
     },
     destroy() {

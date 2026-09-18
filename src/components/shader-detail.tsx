@@ -10,7 +10,7 @@ export function ShaderDetail({
   search,
 }: {
   record: ShaderRecord;
-  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined; q: string };
+  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined; q: string | undefined };
 }) {
   const share = `https://x.com/intent/tweet?text=${encodeURIComponent(
     `A Fieldkit field from @${record.handle}`,
@@ -45,12 +45,12 @@ export function ShaderDetail({
                   href={share}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-border bg-bg/55 px-3 text-xs font-medium text-fg backdrop-blur-sm"
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-white/25 bg-black/40 px-3 text-xs font-medium text-white backdrop-blur-sm transition-[background-color] duration-150 hover:bg-black/55"
                 >
                   <Share2 className="size-3.5" />
                   Share on X
                 </a>
-                <CopyMenu record={record} />
+                <CopyMenu record={record} tone="on-field" />
               </div>
             </div>
           </div>

@@ -22,8 +22,11 @@ function parseId(v: unknown): number | undefined {
   return undefined;
 }
 
-function parseQ(v: unknown): string {
-  return typeof v === "string" ? v : "";
+function parseQ(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().replaceAll('"', "");
+  return s ? s : undefined;
 }
 
 export const Route = createFileRoute("/")({
@@ -38,5 +41,5 @@ export const Route = createFileRoute("/")({
 
 function ExploreRoute() {
   const { view, rarity, id, q } = Route.useSearch();
-  return <ExplorePage view={view} rarity={rarity} id={id} q={q} />;
+  return <ExplorePage view={view} rarity={rarity} id={id} q={q ?? ""} />;
 }

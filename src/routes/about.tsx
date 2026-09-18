@@ -30,7 +30,7 @@ function AboutPage() {
         </p>
         <Link
           to="/"
-          search={{ view: "grid", rarity: "all", id: undefined, q: "" }}
+          search={{ view: "grid", rarity: "all", id: undefined, q: undefined }}
           className="mt-8 inline-flex h-10 items-center rounded-full bg-fg px-4 text-sm font-medium text-bg transition-[opacity] duration-150 hover:opacity-90"
         >
           Back to Explore

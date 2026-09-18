@@ -208,5 +208,12 @@ describe("search", () => {
     assert.equal(byId.length, 1);
     assert.equal(byId[0]?.id, 2240);
     assert.equal(filterCatalog("grain", "no-such-handle-xyz").length, 0);
+    assert.equal(filterCatalog("all", "1").length, 1);
+    assert.equal(filterCatalog("all", "1")[0]?.id, 1);
+    assert.ok(filterCatalog("all", "1").every((s) => s.id === 1));
+    const twentyTwo = filterCatalog("all", "22");
+    assert.equal(twentyTwo.length, 1);
+    assert.equal(twentyTwo[0]?.id, 22);
+    assert.equal(filterCatalog("all", "#1").length, 1);
   });
 });

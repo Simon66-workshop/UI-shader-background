@@ -6,9 +6,11 @@ import { ShaderCanvas } from "./shader-canvas";
 export function ShaderCard({
   record,
   search,
+  live = true,
 }: {
   record: ShaderRecord;
-  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined; q: string };
+  search: { view: "grid" | "immersive"; rarity: string; id: number | undefined; q: string | undefined };
+  live?: boolean;
 }) {
   return (
     <article className="group relative aspect-[16/10] overflow-hidden rounded-[var(--radius-xl)] bg-bg-subtle">
@@ -18,7 +20,7 @@ export function ShaderCard({
         className="absolute inset-0 block"
         aria-label={`Open @${record.handle}`}
       >
-        <ShaderCanvas record={record} mode="card" />
+        {live ? <ShaderCanvas record={record} mode="card" /> : null}
       </Link>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent p-3 pt-10">
         <div className="flex items-end justify-between gap-2">
@@ -31,7 +33,7 @@ export function ShaderCard({
             </span>
           </div>
           <div className="pointer-events-auto shrink-0">
-            <CopyMenu record={record} />
+            <CopyMenu record={record} tone="on-field" />
           </div>
         </div>
       </div>
